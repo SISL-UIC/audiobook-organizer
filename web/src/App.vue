@@ -120,7 +120,10 @@
           <button class="icon-button" type="button" aria-label="Close server folder picker" @click="closeServerPathPicker">×</button>
         </div>
         <p v-if="browseError" class="inline-alert">{{ browseError }}</p>
-        <div v-else class="guide-choice-grid" role="list">
+        <div class="action-row" aria-label="Server browse roots">
+          <button v-for="root in browseRoots" :key="root" class="secondary-action compact-action" type="button" @click="loadServerDirectory(root)">{{ root }}</button>
+        </div>
+        <div v-if="!browseError" class="guide-choice-grid" role="list">
           <button v-if="browseDirectory?.parent" class="guide-choice" type="button" @click="loadServerDirectory(browseDirectory.parent)">..</button>
           <button v-for="directory in browseDirectory?.directories" :key="directory.path" class="guide-choice" type="button" @click="loadServerDirectory(directory.path)"><FolderOpen :size="22" /><strong>{{ directory.name }}</strong></button>
         </div>

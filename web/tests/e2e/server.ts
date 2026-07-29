@@ -13,8 +13,9 @@ export type TestServer = {
 const repoRoot = new URL('../../..', import.meta.url).pathname
 const serverURLPattern = /http:\/\/127\.0\.0\.1:(\d+)\/\?token=([a-f0-9]+)/
 
-export async function startTestServer(): Promise<TestServer> {
-  const child = spawn('go', ['run', '.', 'web', '--host', '127.0.0.1', '--port', '0', '--no-open'], {
+export async function startTestServer(options: { browseRoots?: string[] } = {}): Promise<TestServer> {
+  const browseRootArgs = (options.browseRoots ?? []).flatMap((root) => ['--browse-root', root])
+  const child = spawn('go', ['run', '.', 'web', '--host', '127.0.0.1', '--port', '0', '--no-open', ...browseRootArgs], {
     cwd: repoRoot,
     env: {
       ...process.env,
