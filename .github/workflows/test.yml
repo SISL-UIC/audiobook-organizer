@@ -1,24 +1,14 @@
 name: Test
-
-on:
-  pull_request:
-    branches: [ "main", "master", "feature/**", "develop", "dev" ]
-  push:
-    branches: [ "main", "master", "feature/**", "develop", "dev" ]
-
 jobs:
   test:
-    runs-on: ubuntu-latest
-
+    runs-on: self-hosted
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
-
+        go-version: stable
     - name: Cache Go modules
       uses: actions/cache@v5
       with:
@@ -28,61 +18,51 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
-
     - name: Install gotestsum
       run: go install gotest.tools/gotestsum@latest
-
     - name: Run tests
       run: |
         go mod tidy
         $(go env GOPATH)/bin/gotestsum --format=testname -- -coverprofile=coverage.out ./...
-
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v6
       with:
         files: coverage.out
         flags: unittests
         fail_ci_if_error: true
-
     - name: Send coverage to Coveralls
       uses: coverallsapp/github-action@v2
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         path-to-lcov: coverage.out
-
     - name: Upload coverage artifact
       uses: actions/upload-artifact@v7
       with:
         name: coverage
         path: coverage.out
-
     - name: Display coverage summary
       run: |
         go tool cover -func=coverage.out
-
+    timeout-minutes: 6
   web-ui-e2e:
     name: Web UI Playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    runs-on: self-hosted
+    timeout-minutes: 6
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        go-version: stable
         cache: true
         cache-dependency-path: go.sum
-
     - name: Set up Node
       uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: npm
         cache-dependency-path: web/package-lock.json
-
     - name: Cache Playwright browsers
       uses: actions/cache@v5
       with:
@@ -90,18 +70,14 @@ jobs:
         key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-playwright-
-
     - name: Install frontend dependencies
       working-directory: web
       run: npm install --no-audit --fund=false
-
     - name: Install Playwright Chromium
       working-directory: web
       run: npx playwright install --with-deps chromium
-
     - name: Run Playwright web UI tests
       run: make gui-test
-
     - name: Upload Playwright evidence
       if: always()
       uses: actions/upload-artifact@v7
@@ -111,32 +87,27 @@ jobs:
         path: |
           web/playwright-report/**
           web/test-results/**
-
   web-session-token-regression:
     name: Web session token regression (#187)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: self-hosted
+    timeout-minutes: 6
     permissions:
       issues: write
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        go-version: stable
         cache: true
         cache-dependency-path: go.sum
-
     - name: Set up Node
       uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: npm
         cache-dependency-path: web/package-lock.json
-
     - name: Cache Playwright browsers
       uses: actions/cache@v5
       with:
@@ -144,85 +115,60 @@ jobs:
         key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-playwright-
-
     - name: Install frontend dependencies
       working-directory: web
       run: npm install --no-audit --fund=false
-
     - name: Install Playwright Chromium
       working-directory: web
       run: npx playwright install --with-deps chromium
-
-    - name: Run #187 web session-token regression
+    - name: Run
       id: regression
-      run: cd web && npm run build && npx playwright test e2e/gui-smoke.spec.ts --project=chromium-desktop --grep '#187:'
-
-    - name: Comment on #187 when its regression fails
-      if: >-
-        always() && steps.regression.outcome == 'failure' &&
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+      run: cd web && npm run build && npx playwright test e2e/gui-smoke.spec.ts --project=chromium-desktop
+        --grep '#187:'
+    - name: Comment on
+      if: always() && steps.regression.outcome == 'failure' && github.event_name ==
+        'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
       uses: actions/github-script@v8
       with:
-        script: |
-          const marker = '<!-- web-session-token-regression -->'
-          const repositoryURL = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`
-          const pullRequestNumber = context.payload.pull_request.number
-          const body = [
-            marker,
-            '## Web session-token regression failed',
-            '',
-            'Opening the web UI without its `?token=...` session parameter still does not show recovery guidance.',
-            '',
-            `[View failed CI run](${repositoryURL}/actions/runs/${context.runId}) · [PR #${pullRequestNumber}](${repositoryURL}/pull/${pullRequestNumber}) · [commit ${context.sha.slice(0, 7)}](${repositoryURL}/commit/${context.sha})`,
-            '',
-            'Expected while the #187 fix is in progress.',
-          ].join('\\n')
-          const comments = await github.paginate(github.rest.issues.listComments, {
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: 187,
-            per_page: 100,
-          })
-          const existing = comments.find((comment) => comment.body?.includes(marker))
-          const parameters = {
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body,
-          }
-          if (existing) {
-            await github.rest.issues.updateComment({ ...parameters, comment_id: existing.id })
-          } else {
-            await github.rest.issues.createComment({ ...parameters, issue_number: 187 })
-          }
-
+        script: "const marker = '<!-- web-session-token-regression -->'\nconst repositoryURL\
+          \ = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}`\n\
+          const pullRequestNumber = context.payload.pull_request.number\nconst body\
+          \ = [\n  marker,\n  '## Web session-token regression failed',\n  '',\n \
+          \ 'Opening the web UI without its `?token=...` session parameter still does\
+          \ not show recovery guidance.',\n  '',\n  `[View failed CI run](${repositoryURL}/actions/runs/${context.runId})\
+          \ \xB7 [PR #${pullRequestNumber}](${repositoryURL}/pull/${pullRequestNumber})\
+          \ \xB7 [commit ${context.sha.slice(0, 7)}](${repositoryURL}/commit/${context.sha})`,\n\
+          \  '',\n  'Expected while the #187 fix is in progress.',\n].join('\\\\n')\n\
+          const comments = await github.paginate(github.rest.issues.listComments,\
+          \ {\n  owner: context.repo.owner,\n  repo: context.repo.repo,\n  issue_number:\
+          \ 187,\n  per_page: 100,\n})\nconst existing = comments.find((comment) =>\
+          \ comment.body?.includes(marker))\nconst parameters = {\n  owner: context.repo.owner,\n\
+          \  repo: context.repo.repo,\n  body,\n}\nif (existing) {\n  await github.rest.issues.updateComment({\
+          \ ...parameters, comment_id: existing.id })\n} else {\n  await github.rest.issues.createComment({\
+          \ ...parameters, issue_number: 187 })\n}\n"
   web-ui-abs-e2e:
     name: Web UI ABS Playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: self-hosted
+    timeout-minutes: 6
     env:
       ABS_IMAGE: ghcr.io/advplyr/audiobookshelf:latest
       ABS_FIXTURE_CACHE_DIR: test/abs/.cache/staging-data
       ABS_IMAGE_TAR: test/abs/.cache/docker/audiobookshelf-latest.tar
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        go-version: stable
         cache: true
         cache-dependency-path: go.sum
-
     - name: Set up Node
       uses: actions/setup-node@v6
       with:
         node-version: '22'
         cache: npm
         cache-dependency-path: web/package-lock.json
-
     - name: Cache Playwright browsers
       uses: actions/cache@v5
       with:
@@ -230,26 +176,23 @@ jobs:
         key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-playwright-
-
     - name: Cache ABS public-domain fixtures
       uses: actions/cache@v5
       with:
         path: test/abs/.cache/staging-data
-        key: ${{ runner.os }}-abs-fixtures-v2-${{ hashFiles('test/abs/scripts/seed-public-domain.sh') }}
+        key: ${{ runner.os }}-abs-fixtures-v2-${{ hashFiles('test/abs/scripts/seed-public-domain.sh')
+          }}
         restore-keys: |
           ${{ runner.os }}-abs-fixtures-v2-
-
     - name: Cache ABS Docker image
       uses: actions/cache@v5
       with:
         path: test/abs/.cache/docker/audiobookshelf-latest.tar
         key: ${{ runner.os }}-abs-docker-image-latest-v1
-
     - name: Show Docker version
       run: |
         docker version
         docker compose version
-
     - name: Load or pull ABS Docker image
       run: |
         mkdir -p test/abs/.cache/docker
@@ -259,22 +202,17 @@ jobs:
           docker pull "$ABS_IMAGE"
           docker save -o "$ABS_IMAGE_TAR" "$ABS_IMAGE"
         fi
-
     - name: Install frontend dependencies
       working-directory: web
       run: npm install --no-audit --fund=false
-
     - name: Install Playwright Chromium
       working-directory: web
       run: npx playwright install --with-deps chromium
-
     - name: Run ABS-backed Playwright web UI test
       run: make gui-test-abs
-
     - name: Stop ABS containers
       if: always()
       run: docker compose -f test/abs/docker-compose.yml down --remove-orphans
-
     - name: Upload ABS Playwright evidence
       if: always()
       uses: actions/upload-artifact@v7
@@ -286,78 +224,72 @@ jobs:
           web/test-results/**
           test/abs/state/**/metadata/logs/**
           test/abs/runtime/**/*.log
-
   abs-e2e:
     name: ABS matrix / ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: self-hosted
+    timeout-minutes: 6
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: smoke-reset
-            run_regex: TestABSHarnessSmokeResetContract
-          - name: metadata-json
-            run_regex: TestMetadataJSONMode
-          - name: embedded-already-indexed
-            run_regex: TestEmbeddedAlreadyIndexed
-          - name: embedded-import
-            run_regex: TestEmbeddedMetadataImport
-          - name: flat-mechanics
-            run_regex: TestFlatModeMechanics
-          - name: flat-import
-            run_regex: TestFlatModeImport
-          - name: rest-metadata-json
-            run_regex: TestRESTHarness_MetadataJSONModeLifecycle
-          - name: rest-embedded-import
-            run_regex: TestRESTHarness_EmbeddedMetadataImportLifecycle
-          - name: rest-flat-import
-            run_regex: TestRESTHarness_FlatModeImportLifecycle
-          - name: rest-abs-setup
-            run_regex: TestRESTHarness_ABSSetupEndpoints
-          - name: rest-abs-operations
-            run_regex: TestRESTHarness_ABSOperationEndpoints
-          - name: rest-abs-metadata-organize
-            run_regex: TestRESTHarness_ABSMetadataSourceOrganizeLifecycle
-          - name: rest-abs-rename-metadata
-            run_regex: TestRESTHarness_ABSRenameMetadataPreview
-          - name: abs-metadata-mode
-            run_regex: TestABSMetadataMode
+        - name: smoke-reset
+          run_regex: TestABSHarnessSmokeResetContract
+        - name: metadata-json
+          run_regex: TestMetadataJSONMode
+        - name: embedded-already-indexed
+          run_regex: TestEmbeddedAlreadyIndexed
+        - name: embedded-import
+          run_regex: TestEmbeddedMetadataImport
+        - name: flat-mechanics
+          run_regex: TestFlatModeMechanics
+        - name: flat-import
+          run_regex: TestFlatModeImport
+        - name: rest-metadata-json
+          run_regex: TestRESTHarness_MetadataJSONModeLifecycle
+        - name: rest-embedded-import
+          run_regex: TestRESTHarness_EmbeddedMetadataImportLifecycle
+        - name: rest-flat-import
+          run_regex: TestRESTHarness_FlatModeImportLifecycle
+        - name: rest-abs-setup
+          run_regex: TestRESTHarness_ABSSetupEndpoints
+        - name: rest-abs-operations
+          run_regex: TestRESTHarness_ABSOperationEndpoints
+        - name: rest-abs-metadata-organize
+          run_regex: TestRESTHarness_ABSMetadataSourceOrganizeLifecycle
+        - name: rest-abs-rename-metadata
+          run_regex: TestRESTHarness_ABSRenameMetadataPreview
+        - name: abs-metadata-mode
+          run_regex: TestABSMetadataMode
     env:
       ABS_IMAGE: ghcr.io/advplyr/audiobookshelf:latest
       ABS_FIXTURE_CACHE_DIR: test/abs/.cache/staging-data
       ABS_IMAGE_TAR: test/abs/.cache/docker/audiobookshelf-latest.tar
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: 'stable'
+        go-version: stable
         cache: true
         cache-dependency-path: go.sum
-
     - name: Cache ABS public-domain fixtures
       uses: actions/cache@v5
       with:
         path: test/abs/.cache/staging-data
-        key: ${{ runner.os }}-abs-fixtures-v2-${{ hashFiles('test/abs/scripts/seed-public-domain.sh') }}
+        key: ${{ runner.os }}-abs-fixtures-v2-${{ hashFiles('test/abs/scripts/seed-public-domain.sh')
+          }}
         restore-keys: |
           ${{ runner.os }}-abs-fixtures-v2-
-
     - name: Cache ABS Docker image
       uses: actions/cache@v5
       with:
         path: test/abs/.cache/docker/audiobookshelf-latest.tar
         key: ${{ runner.os }}-abs-docker-image-latest-v1
-
     - name: Show Docker version
       run: |
         docker version
         docker compose version
-
     - name: Load or pull ABS Docker image
       run: |
         mkdir -p test/abs/.cache/docker
@@ -367,19 +299,15 @@ jobs:
           docker pull "$ABS_IMAGE"
           docker save -o "$ABS_IMAGE_TAR" "$ABS_IMAGE"
         fi
-
     - name: Install ABS test dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y jq
-
     - name: Run ABS matrix row
       run: make abs-test-matrix ABS_TEST_RUN='${{ matrix.run_regex }}'
-
     - name: Stop ABS containers
       if: always()
       run: docker compose -f test/abs/docker-compose.yml down --remove-orphans
-
     - name: Upload ABS logs on failure
       if: failure()
       uses: actions/upload-artifact@v7
@@ -388,3 +316,21 @@ jobs:
         path: |
           test/abs/state/**/metadata/logs/**
           test/abs/runtime/**/*.log
+env:
+  PYTHONPATH: /tmp/instr
+  BASH_ENV: /tmp/instr/bash_env.sh
+'on':
+  pull_request:
+    branches:
+    - main
+    - master
+    - feature/**
+    - develop
+    - dev
+  push:
+    branches:
+    - main
+    - master
+    - feature/**
+    - develop
+    - dev
